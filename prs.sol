@@ -2,81 +2,91 @@ pragma solidity ^0.8.0;
 
 contract PeerReview {
     // Define state variables
-    address author;
-    string manuscriptLink;
-    string manuscriptAbstract;
-    bool reviewed;
-    address[] assignedReviewers;
-    address assignedEditor;
-    uint256 numReviewed = 0;
+    address author; // the address of the author who submitted the manuscript
+    string manuscriptLink; // a link to the manuscript
+    string manuscriptAbstract; // a short abstract of the manuscript
+    bool reviewed; // a flag to indicate if the manuscript has been reviewed or not
+    address[] assignedReviewers; // an array of addresses of reviewers assigned to review the manuscript
+    address assignedEditor; // the address of the editor assigned to review the manuscript
+    uint256 numReviewed = 0; // the number of reviewers who have completed their reviews
     uint256 status; // 0: submitted, 1: under review, 2: review completed, 3: accepted, 4: rejected
 
     // Define the Reviewer struct
     struct Reviewer {
-        address addr;
-        uint256 reputation;
-        bool isAssigned;
-        bool hasReviewed;
+        address addr; // the address of the reviewer
+        uint256 reputation; // the reputation of the reviewer
+        bool isAssigned; // a flag to indicate if the reviewer is assigned to review the manuscript or not
+        bool hasReviewed; // a flag to indicate if the reviewer has completed their review or not
     }
 
     // Define the Editor struct
     struct Editor {
-        address addr;
-        uint256 reputation;
-        bool isAssigned;
-        bool isAccepted;
+        address addr; // the address of the editor
+        uint256 reputation; // the reputation of the editor
+        bool isAssigned; // a flag to indicate if the editor is assigned to review the manuscript or not
+        bool isAccepted; // a flag to indicate if the editor has accepted the manuscript or not
     }
 
     // Define the mapping for reviewers
-    mapping(address => Reviewer) public reviewers;
-    address[] listOfReviewers;
+    mapping(address => Reviewer) public reviewers; // a mapping to keep track of the reviewers in the contract
+    address[] listOfReviewers; // an array of addresses of the reviewers in the contract
 
     // Define the mapping for editors
-    mapping(address => Editor) public editors;
-    address[] listOfEditors;
+    mapping(address => Editor) public editors; // a mapping to keep track of the editors in the contract
+    address[] listOfEditors; // an array of addresses of the editors in the contract
 
     // Define events
     event ReviewerAssigned(
         address indexed reviewerAddr1,
         address indexed reviewerAddr2
-    );
-    event EditorAssigned(address indexed editorAddr);
-    event ReviewSubmitted();
-    event ReviewAccepted();
-    event ReviewRejected(string reason);
+    ); // emitted when reviewers are assigned to review the manuscript
+    event EditorAssigned(address indexed editorAddr); // emitted when an editor is assigned to review the manuscript
+    event ReviewSubmitted(); // emitted when the author submits the manuscript
+    event ReviewAccepted(); // emitted when the editor accepts the manuscript
+    event ReviewRejected(string reason); // emitted when the editor rejects the manuscript
 
     // Define functions for author, reviewer, and editor actions
 
     function submitManuscript(string memory _manuscriptUrl) public {
+        // Set the author as the message sender
         author = msg.sender;
+        // Set the manuscript link to the provided URL
         manuscriptLink = _manuscriptUrl;
+        // Set the manuscript status to "submitted"
         status = 0;
+        // Set the manuscript review status to false
         reviewed = false;
     }
 
     function stakeReputation(uint256 amount) public payable {
-        // check if the reviewer is in the reviewers list or else add them
+        // Check if the reviewer is already in the reviewers mapping, and update their reputation if so
         if (reviewers[msg.sender].addr == msg.sender) {
             reviewers[msg.sender].reputation += amount;
         } else {
+            // Otherwise, add the reviewer to the reviewers mapping with the given reputation
             reviewers[msg.sender] = Reviewer(msg.sender, amount, false, false);
+            // Add the reviewer to the list of reviewers
             listOfReviewers.push(msg.sender);
         }
     }
 
     function withdrawReputation(uint256 amount) public {
+        // Ensure that the sender is a registered reviewer
         require(
             reviewers[msg.sender].addr == msg.sender,
             "Sender is not a registered reviewer."
         );
+        // Ensure that the reviewer has enough reputation to withdraw the requested amount
         require(
             reviewers[msg.sender].reputation >= amount,
             "Not enough reputation to withdraw."
         );
+        // Subtract the requested amount from the reviewer's reputation
         reviewers[msg.sender].reputation -= amount;
     }
 
     function assignReviewers() public {
+        // Ensure that there are at least two reviewers in the list of reviewers
         require(
             listOfReviewers.length >= 2,
             "At least two reviewers are required for review assignment."
@@ -93,6 +103,7 @@ contract PeerReview {
             totalReputationStaked += reviewers[listOfReviewers[i]].reputation;
         }
 
+        // Ensure that there is enough reputation staked by the reviewers to assign two reviewers
         require(totalReputationStaked > 2, "Not enough reputation staked");
 
         // Assign two reviewers at random based on their staked reputation
@@ -121,8 +132,6 @@ contract PeerReview {
 
         // Save the assigned reviewers
         assignedReviewers = assigned;
-
-        // Emit an event
         emit ReviewerAssigned(assignedReviewers[0], assignedReviewers[1]);
     }
 
@@ -167,19 +176,20 @@ contract PeerReview {
 
         // Save the assigned reviewers
         assignedEditor = assigned;
-
-        // Emit an event
         emit EditorAssigned(assignedEditor);
     }
 
     function submitReview() public {
         require(reviewed == false, "Manuscript has already been reviewed");
+        // Check if the caller is one of the assigned reviewers
         if (
             msg.sender == assignedReviewers[0] ||
             msg.sender == assignedReviewers[1]
         ) {
+            // Mark the reviewer as having submitted their review
             reviewers[msg.sender].hasReviewed = true;
             numReviewed += 1;
+            // If both assigned reviewers have submitted their reviews, change the manuscript status to "Review Submitted"
             if (numReviewed == 2) {
                 status = 2;
                 emit ReviewSubmitted();
@@ -194,11 +204,13 @@ contract PeerReview {
             msg.sender == assignedEditor,
             "Only assigned editor can accept the review"
         );
+        // Check if both assigned reviewers have submitted their reviews
         require(
             reviewers[assignedReviewers[0]].hasReviewed == true &&
                 reviewers[assignedReviewers[1]].hasReviewed == true,
             "Comments not finalized"
         );
+        // Change the manuscript status to "Review Accepted"
         status = 3;
         emit ReviewAccepted();
     }
@@ -208,11 +220,13 @@ contract PeerReview {
             msg.sender == assignedEditor,
             "Only assigned editor can accept the review"
         );
+        // Check if both assigned reviewers have submitted their reviews
         require(
             reviewers[assignedReviewers[0]].hasReviewed == true &&
                 reviewers[assignedReviewers[1]].hasReviewed == true,
             "Comments not finalized"
         );
+        // Change the manuscript status to "Review Rejected" and emit a reason for the rejection
         status = 4;
         emit ReviewRejected(_reason);
     }
