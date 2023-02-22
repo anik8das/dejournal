@@ -15,13 +15,12 @@ This smart contract is designed to facilitate the peer review process for schola
 
 ## Contract Variables:
 
-status: This variable tracks the status of the manuscript. The possible values are: 0 (Submitted), 1 (Under Review), 2 (Review Complete - Pending Editor Decision), 3 (Accepted), 4 (Rejected).
-
-1. reviewed: This variable indicates whether the manuscript has been reviewed or not.
-2. numReviewed: This variable tracks the number of reviews that have been completed.
-3. assignedReviewers: This array stores the addresses of the two reviewers assigned to review the manuscript.
-4. assignedEditor: This variable stores the address of the editor assigned to oversee the review process.
-5. manuscript: This struct stores information about the manuscript, including the title, abstract, and author.
-6. reviewers: This mapping stores information about the reviewers, including their reputation and whether they have completed their review.
-7. listOfReviewers: This array stores the addresses of all the reviewers added to the contract.
-8. listOfEditors: This array stores the addresses of all the editors added to the contract.
+1. status: This variable tracks the status of the manuscript. The possible values are: 0 (Submitted), 1 (Under Review), 2 (Review Complete - Pending Editor Decision), 3 (Accepted), 4 (Rejected).
+2. reviewed: This variable indicates whether the manuscript has been reviewed or not.
+3. numReviewed: This variable tracks the number of reviews that have been completed.
+4. assignedReviewers: This array stores the addresses of the two reviewers assigned to review the manuscript.
+5. assignedEditor: This variable stores the address of the editor assigned to oversee the review process.
+6. manuscript: This struct stores information about the manuscript, including the title, abstract, and author.
+7. reviewers: This mapping stores information about the reviewers, including their reputation and whether they have completed their review.
+8. listOfReviewers: This array stores the addresses of all the reviewers added to the contract.
+9. listOfEditors: This array stores the addresses of all the editors added to the contract.
