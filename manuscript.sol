@@ -1,12 +1,15 @@
+// SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.0;
 
-contract PeerReview {
+contract Manuscript {
     address admin;
     address author;
-    string manuscriptLink;
-    string manuscriptAbstract;
-    address[2] assignedReviewers;
-    address assignedEditor;
+    string title;
+    string link;
+    string summary; // using sumnmary instead of abstract because abstract is a reserved keyword in solidity
+    address[2] public assignedReviewers;
+    address public assignedEditor;
     uint256 numReviewed;
     uint256 status; /* 
         0: not reviewed
@@ -34,6 +37,7 @@ contract PeerReview {
     address[] listOfReviewers; // for looping purposes
     mapping(address => Editor) public editors;
     address[] listOfEditors; // for looping purposes
+    mapping(address => bool) public registered;
 
     event ReviewerAssigned(
         address indexed reviewerAddr1,
@@ -41,7 +45,6 @@ contract PeerReview {
     );
     event EditorAssigned(address indexed editorAddr);
     event CommentsSubmitted(address indexed reviewerAddr);
-    event CommentsSubmitted();
     event ManuscriptAccepted();
     event ManuscriptRejected(string reason);
     event ReviewApproved();
@@ -50,18 +53,30 @@ contract PeerReview {
     event ReputationStripped();
 
     constructor(
+        address _admin,
         address _author,
+        string memory _title,
         string memory _manuscriptUrl,
-        string memory _manuscriptAbstract
+        string memory _summary
     ) {
-        admin = msg.sender;
+        admin = _admin;
         author = _author;
         status = 0;
-        manuscriptLink = _manuscriptUrl;
-        manuscriptAbstract = _manuscriptAbstract;
+        title = _title;
+        link = _manuscriptUrl;
+        summary = _summary;
         numReviewed = 0;
         assignedReviewers = [address(0), address(0)];
         assignedEditor = address(0);
+    }
+
+    function getManuscriptDetails()
+        public
+        view
+        returns (address, string memory, string memory, string memory, uint256)
+    {
+        require(msg.sender == admin, "Unauthorized");
+        return (author, title, link, summary, status);
     }
 
     function isPayable(address testAddress) private returns (bool) {
@@ -76,19 +91,29 @@ contract PeerReview {
         balance += msg.value;
     }
 
-    function stakeReputation(uint256 amount) public payable {
+    function stakeReputationReviewer(uint256 amount) public payable {
         require(amount > 0, "Amount must be greater than 0.");
         require(status == 0, "Manuscript is already under review.");
         if (reviewers[msg.sender].addr == msg.sender) {
             reviewers[msg.sender].reputation += amount;
         } else {
+            require(
+                !registered[msg.sender],
+                "Sender already registered as an editor."
+            );
             require(isPayable(msg.sender), "Sender is not a payable address.");
+            require(
+                msg.sender != admin && msg.sender != author,
+                "Admin or Author cannot be a reviewer."
+            );
             reviewers[msg.sender] = Reviewer(msg.sender, amount, false);
             listOfReviewers.push(msg.sender);
+            registered[msg.sender] = true;
         }
+        balance += amount;
     }
 
-    function withdrawReputation(uint256 amount) public {
+    function withdrawReputationReviewer(uint256 amount) public payable {
         require(
             reviewers[msg.sender].addr == msg.sender,
             "Sender is not a registered reviewer."
@@ -100,9 +125,10 @@ contract PeerReview {
         require(amount > 0, "Amount to be withdrawn must be greater than 0.");
         require(status == 0, "Manuscript is already under review.");
         reviewers[msg.sender].reputation -= amount;
+        balance -= amount;
     }
 
-    function assignReviewers() public {
+    function assignReviewers() public payable {
         require(msg.sender == admin, "Only admin can assign reviewers.");
         require(
             listOfReviewers.length >= 2,
@@ -118,7 +144,6 @@ contract PeerReview {
             totalReputationStaked += reviewers[listOfReviewers[i]].reputation;
         }
         require(totalReputationStaked > 2, "Not enough reputation staked");
-        address[2] memory assigned;
         uint256 numAssignedReviewers = 0;
         while (numAssignedReviewers < 2) {
             uint256 randomValue = uint256(
@@ -140,13 +165,12 @@ contract PeerReview {
                 }
             }
         }
-        assignedReviewers = assigned;
         status = 1;
-        returnReputationToUnassigned();
+        returnReputationToUnassignedReviewers();
         emit ReviewerAssigned(assignedReviewers[0], assignedReviewers[1]);
     }
 
-    function returnReputationToUnassigned() public {
+    function returnReputationToUnassignedReviewers() public payable {
         require(msg.sender == admin, "Only admin can assign reviewers.");
         require(status == 1, "Reviewers have not been assigned yet.");
         for (uint256 i = 0; i < listOfReviewers.length; i++) {
@@ -154,15 +178,64 @@ contract PeerReview {
                 listOfReviewers[i] != assignedReviewers[0] &&
                 listOfReviewers[i] != assignedReviewers[1]
             ) {
+                require(
+                    balance >= reviewers[listOfReviewers[i]].reputation,
+                    "Insufficient balance in the contract to assign reviewers"
+                );
                 payable(listOfReviewers[i]).transfer(
                     reviewers[listOfReviewers[i]].reputation
                 );
+                reviewers[listOfReviewers[i]].reputation = 0;
+                balance -= reviewers[listOfReviewers[i]].reputation;
             }
         }
     }
 
-    function assignEditor() public {
-        require(msg.sender == admin, "Only admin can assign reviewers.");
+    function stakeReputationEditor(uint256 amount) public payable {
+        require(amount > 0, "Amount must be greater than 0.");
+        require(
+            status == 0 || status == 1,
+            "Manuscript is already under review."
+        );
+        if (editors[msg.sender].addr == msg.sender) {
+            editors[msg.sender].reputation += amount;
+        } else {
+            require(
+                !registered[msg.sender],
+                "Sender already registered as a reviewer."
+            );
+            require(isPayable(msg.sender), "Sender is not a payable address.");
+            require(
+                msg.sender != admin && msg.sender != author,
+                "Admin or Author cannot be an editor."
+            );
+            editors[msg.sender] = Editor(msg.sender, amount);
+            listOfEditors.push(msg.sender);
+            registered[msg.sender] = true;
+        }
+        balance += amount;
+    }
+
+    function withdrawReputationEditor(uint256 amount) public payable {
+        require(
+            editors[msg.sender].addr == msg.sender,
+            "Sender is not a registered editor."
+        );
+        require(
+            editors[msg.sender].reputation >= amount,
+            "Not enough reputation to withdraw."
+        );
+        require(amount > 0, "Amount to be withdrawn must be greater than 0.");
+        require(
+            status == 0 || status == 1,
+            "Manuscript is already under review."
+        );
+        editors[msg.sender].reputation -= amount;
+        balance -= amount;
+    }
+
+    function assignEditor() public payable {
+        require(msg.sender == admin, "Only admin can assign editor.");
         require(
             listOfEditors.length >= 1,
             "At least one staked editor is required for review assignment."
@@ -178,13 +251,12 @@ contract PeerReview {
         uint256[] memory reputationStaked = new uint256[](numEditors);
         for (uint256 i = 0; i < listOfEditors.length; i++) {
             eligibleEditors[i] = listOfEditors[i];
-            reputationStaked[i] = reviewers[listOfEditors[i]].reputation;
-            totalReputationStaked += reviewers[listOfEditors[i]].reputation;
+            reputationStaked[i] = editors[listOfEditors[i]].reputation;
+            totalReputationStaked += editors[listOfEditors[i]].reputation;
         }
 
         require(totalReputationStaked > 10, "Not enough reputation staked");
 
-        address assigned;
         uint256 numAssignedEditor = 0;
         while (numAssignedEditor < 1) {
             uint256 randomValue = uint256(
@@ -193,7 +265,7 @@ contract PeerReview {
             for (uint256 i = 0; i < numEditors; i++) {
                 if (eligibleEditors[i] != address(0)) {
                     if (randomValue < reputationStaked[i]) {
-                        assigned = eligibleEditors[i];
+                        assignedEditor = eligibleEditors[i];
                         numAssignedEditor++;
                         break;
                     } else {
@@ -202,15 +274,31 @@ contract PeerReview {
                 }
             }
         }
-
-        assignedEditor = assigned;
+        returnReputationToUnassignedEditors();
         status = 2;
         emit EditorAssigned(assignedEditor);
     }
 
+    function returnReputationToUnassignedEditors() public payable {
+        require(msg.sender == admin, "Only admin can assign editors.");
+        for (uint256 i = 0; i < listOfEditors.length; i++) {
+            if (listOfEditors[i] != assignedEditor) {
+                require(
+                    balance >= editors[listOfEditors[i]].reputation,
+                    "Insufficient balance in the contract to assign editors"
+                );
+                payable(listOfEditors[i]).transfer(
+                    editors[listOfEditors[i]].reputation
+                );
+                editors[listOfEditors[i]].reputation = 0;
+                balance -= editors[listOfEditors[i]].reputation;
+            }
+        }
+    }
+
     function submitComments() public {
         require(
-            status == 3,
+            status == 2,
             "Editors and Reviewers need to be assigned first."
         );
         require(
@@ -226,8 +314,8 @@ contract PeerReview {
         numReviewed += 1;
         if (numReviewed == 2) {
             status = 3;
-            emit CommentsSubmitted();
         }
+        emit CommentsSubmitted(msg.sender);
     }
 
     function acceptReview() public {
@@ -308,6 +396,7 @@ contract PeerReview {
     }
 
     function stripReputation() private {
+        // transfer reputation staked to the admin
         payable(admin).transfer(
             reviewers[assignedReviewers[0]].reputation +
                 reviewers[assignedReviewers[1]].reputation +
